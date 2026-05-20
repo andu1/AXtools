@@ -1,0 +1,18 @@
+Package: axtools
+Title: Tang Lab Analysis Utilities
+Version: 0.1.0
+Authors@R: person("Andy", "Xu", email = "aaaxux@gmail.com", role = c("aut", "cre"))
+Description: Helper functions for scRNA-seq, ChIP-seq, and bulk RNA-seq
+    analysis in the Tang Lab.
+License: MIT + file LICENSE
+Imports:
+    Seurat,
+    ggplot2,
+    dplyr,
+    ggrepel,
+    EnhancedVolcano,
+    clusterProfiler,
+    msigdbr
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
