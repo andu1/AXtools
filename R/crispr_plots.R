@@ -1106,3 +1106,152 @@ plot_ratio_histogram_hits <- function(
   }
   return(p)
 }
+
+# ---- plot_enrichment_scatter -------------------------------------------------
+
+#' Enrichment scatter comparing two positive replicates
+#'
+#' Computes a per-sgRNA enrichment score (positive cell number / unsorted cell
+#' number) independently for each of two replicates, then draws a scatter plot
+#' comparing the two scores. The top guides by Euclidean distance from the
+#' origin are labelled by gene name.
+#'
+#' @inheritParams plot_neg_correlation
+#' @param pos.samples Character vector of exactly two positive sample names
+#'   (x-axis and y-axis).
+#' @param unsorted.sample Name of the pre-sorted / unsorted denominator sample.
+#' @param sg.pattern Regex stripped from sgID to extract the gene name.
+#' @param n.label Number of top guides (by distance from origin) to label.
+#' @param log.score If `TRUE`, plot log10(enrichment score) instead of the raw
+#'   ratio; guides with score <= 0 are dropped.
+#' @param min.unsorted Minimum unsorted cell number to include a guide.
+#' @param label.size Size of gene-name labels.
+#' @param point.size,point.alpha Aesthetic parameters.
+#' @param plot.title Plot title; auto-generated if `NULL`.
+#' @param save.plot If `TRUE`, save to `output.file`.
+#' @param output.file File path for saved plot.
+#' @param plot.width,plot.height Dimensions in inches for saved plot.
+#' @return A list with `plot` (ggplot object) and `scores` (data.frame of all
+#'   enrichment scores).
+#' @export
+plot_enrichment_scatter <- function(
+    sample.info,
+    pos.samples    = c("pos-1", "pos-2"),
+    unsorted.sample = "unsorted-1",
+    id.column      = "sgID",
+    sample.column  = "Sample_ID",
+    value.column   = "cell_num",
+    sg.pattern     = "_sg[0-9]+$",
+    n.label        = 20,
+    log.score      = TRUE,
+    min.unsorted   = 1,
+    label.size     = 3,
+    point.size     = 0.8,
+    point.alpha    = 0.35,
+    palette.name   = "Set1",
+    plot.title     = NULL,
+    save.plot      = FALSE,
+    output.file    = "enrichment_scatter.pdf",
+    plot.width     = 8,
+    plot.height    = 7
+) {
+  require(ggplot2)
+
+  if (length(pos.samples) != 2)
+    stop("pos.samples must be a character vector of exactly 2 sample names.")
+
+  ## Read and validate
+  if (is.character(sample.info)) {
+    df <- read.csv(sample.info, stringsAsFactors = FALSE, check.names = FALSE)
+  } else {
+    df <- as.data.frame(sample.info)
+  }
+  needed <- c(unsorted.sample, pos.samples)
+  missing.samples <- setdiff(needed, unique(df[[sample.column]]))
+  if (length(missing.samples) > 0)
+    stop("Sample(s) not found in '", sample.column, "': ",
+         paste(missing.samples, collapse = ", "))
+
+  ## Unsorted denominator
+  uns <- df[df[[sample.column]] == unsorted.sample & df[[value.column]] >= min.unsorted,
+            c(id.column, value.column)]
+  names(uns) <- c("sgID", "unsorted")
+
+  ## Enrichment per replicate
+  enrich <- lapply(pos.samples, function(ps) {
+    sub <- df[df[[sample.column]] == ps & df[[value.column]] > 0,
+              c(id.column, value.column)]
+    names(sub) <- c("sgID", "pos")
+    m <- merge(sub, uns, by = "sgID")
+    m$score <- m$pos / m$unsorted
+    m[, c("sgID", "score")]
+  })
+  names(enrich) <- pos.samples
+
+  ## Merge replicates
+  merged <- merge(enrich[[1]], enrich[[2]], by = "sgID", suffixes = paste0(".", pos.samples))
+  score.cols <- paste0("score.", pos.samples)
+  names(merged)[names(merged) == score.cols[1]] <- "score.x"
+  names(merged)[names(merged) == score.cols[2]] <- "score.y"
+
+  ## Gene names
+  merged$gene <- sub(sg.pattern, "", merged$sgID)
+
+  ## Log transform
+  if (log.score) {
+    merged <- merged[merged$score.x > 0 & merged$score.y > 0, ]
+    merged$plot.x <- log10(merged$score.x)
+    merged$plot.y <- log10(merged$score.y)
+    x.lab <- sprintf("log10(%s / %s)", pos.samples[1], unsorted.sample)
+    y.lab <- sprintf("log10(%s / %s)", pos.samples[2], unsorted.sample)
+  } else {
+    merged$plot.x <- merged$score.x
+    merged$plot.y <- merged$score.y
+    x.lab <- sprintf("%s / %s", pos.samples[1], unsorted.sample)
+    y.lab <- sprintf("%s / %s", pos.samples[2], unsorted.sample)
+  }
+
+  ## Distance from origin & top N
+  merged$dist <- sqrt(merged$plot.x^2 + merged$plot.y^2)
+  merged <- merged[order(-merged$dist), ]
+  top <- merged[seq_len(min(n.label, nrow(merged))), ]
+
+  ## Report
+  message(sprintf("Enrichment score: %s cell_num / %s cell_num%s",
+                  "positive", unsorted.sample, if (log.score) " (log10)" else ""))
+  message(sprintf("  %d sgRNAs with scores in both replicates", nrow(merged)))
+  message(sprintf("  Top %d by distance from origin:", nrow(top)))
+  print(top[, c("sgID", "gene", "score.x", "score.y", "dist")], row.names = FALSE)
+
+  ## Title
+  if (is.null(plot.title))
+    plot.title <- sprintf("Enrichment: %s vs %s (normalized to %s)",
+                          pos.samples[1], pos.samples[2], unsorted.sample)
+
+  ## Build plot
+  p <- ggplot(merged, aes(x = plot.x, y = plot.y)) +
+    geom_point(size = point.size, alpha = point.alpha, colour = "grey50") +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey60", linewidth = 0.4) +
+    geom_point(data = top, aes(x = plot.x, y = plot.y),
+               colour = get_palette(1, palette.name), size = point.size + 1) +
+    labs(x = x.lab, y = y.lab, title = plot.title) +
+    theme_bw(base_size = 12)
+
+  if (requireNamespace("ggrepel", quietly = TRUE)) {
+    p <- p + ggrepel::geom_text_repel(
+      data = top, aes(x = plot.x, y = plot.y, label = gene),
+      size = label.size, colour = get_palette(1, palette.name),
+      max.overlaps = Inf, min.segment.length = 0,
+      segment.size = 0.2, box.padding = 0.35)
+  } else {
+    p <- p + geom_text(data = top, aes(x = plot.x, y = plot.y, label = gene),
+                       size = label.size, vjust = -0.6, check_overlap = TRUE)
+  }
+
+  if (save.plot) {
+    ggsave(output.file, plot = p, width = plot.width, height = plot.height)
+    message("Saved plot to: ", output.file)
+  }
+
+  invisible(list(plot = p, scores = merged))
+}
