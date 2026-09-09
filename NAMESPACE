@@ -2,6 +2,7 @@
 
 export(generate_summary_stats)
 export(get_palette)
+export(plot_enrichment_barcode)
 export(plot_enrichment_scatter)
 export(plot_gene_set_bars)
 export(plot_low_abundance_venn)
