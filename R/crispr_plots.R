@@ -1211,10 +1211,11 @@ plot_enrichment_scatter <- function(
     y.lab <- sprintf("%s / %s", pos.samples[2], unsorted.sample)
   }
 
-  ## Distance from origin & top N
+  ## Distance from origin & top N (enriched quadrant only: both scores > 0)
   merged$dist <- sqrt(merged$plot.x^2 + merged$plot.y^2)
-  merged <- merged[order(-merged$dist), ]
-  top <- merged[seq_len(min(n.label, nrow(merged))), ]
+  enriched <- merged[merged$plot.x > 0 & merged$plot.y > 0, ]
+  enriched <- enriched[order(-enriched$dist), ]
+  top <- enriched[seq_len(min(n.label, nrow(enriched))), ]
 
   ## Report
   message(sprintf("Enrichment score: %s cell_num / %s cell_num%s",
