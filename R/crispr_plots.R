@@ -1121,7 +1121,12 @@ plot_ratio_histogram_hits <- function(
 #'   (x-axis and y-axis).
 #' @param unsorted.sample Name of the pre-sorted / unsorted denominator sample.
 #' @param sg.pattern Regex stripped from sgID to extract the gene name.
-#' @param n.label Number of top guides (by distance from origin) to label.
+#' @param n.label Number of top guides (by combined score) to label.
+#' @param highlight.genes Optional character vector of gene names to label in a
+#'   distinct colour, regardless of their rank. Use to cross-reference top
+#'   genes from another enrichment scatter.
+#' @param highlight.colour Colour for highlighted genes (default `"firebrick"`).
+#' @param highlight.label Legend label for highlighted genes.
 #' @param log.score If `TRUE`, apply a log transform to the enrichment scores
 #'   before plotting and regression; guides with score <= 0 are dropped.
 #'   If `FALSE`, plot raw ratios.
@@ -1146,6 +1151,9 @@ plot_enrichment_scatter <- function(
     value.column   = "cell_num",
     sg.pattern     = "_sg[0-9]+$",
     n.label        = 20,
+    highlight.genes = NULL,
+    highlight.colour = "firebrick",
+    highlight.label  = "cross-referenced",
     log.score      = TRUE,
     log.base       = 10,
     min.unsorted   = 1,
@@ -1217,42 +1225,59 @@ plot_enrichment_scatter <- function(
     y.lab <- sprintf("%s / %s", pos.samples[2], unsorted.sample)
   }
 
-  ## Distance from origin & top N (enriched quadrant only: both scores > 0)
-  merged$dist <- sqrt(merged$plot.x^2 + merged$plot.y^2)
-  enriched <- merged[merged$plot.x > 0 & merged$plot.y > 0, ]
-  enriched <- enriched[order(-enriched$dist), ]
-  top <- enriched[seq_len(min(n.label, nrow(enriched))), ]
+  ## Top N by combined score (highest enrichment across both replicates)
+  merged$combined <- merged$plot.x + merged$plot.y
+  merged <- merged[order(-merged$combined), ]
+  top <- merged[seq_len(min(n.label, nrow(merged))), ]
 
   ## Report
   message(sprintf("Enrichment score: %s cell_num / %s cell_num%s",
                   "positive", unsorted.sample, if (log.score) sprintf(" (%s)", base.lab) else ""))
   message(sprintf("  %d sgRNAs with scores in both replicates", nrow(merged)))
   message(sprintf("  Top %d by distance from origin:", nrow(top)))
-  print(top[, c("sgID", "gene", "score.x", "score.y", "dist")], row.names = FALSE)
+  print(top[, c("sgID", "gene", "score.x", "score.y", "combined")], row.names = FALSE)
 
   ## Title
   if (is.null(plot.title))
     plot.title <- sprintf("Enrichment: %s vs %s (normalized to %s)",
                           pos.samples[1], pos.samples[2], unsorted.sample)
 
+  ## Highlight genes (cross-referenced from another plot)
+  hl.df <- NULL
+  if (!is.null(highlight.genes)) {
+    hl.df <- merged[merged$gene %in% highlight.genes, ]
+    hl.df <- hl.df[!duplicated(hl.df$gene), ]
+  }
+
   ## Build plot
+  top.col <- get_palette(1, palette.name)
   p <- ggplot(merged, aes(x = plot.x, y = plot.y)) +
     geom_point(size = point.size, alpha = point.alpha, colour = "grey50") +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey60", linewidth = 0.4) +
     geom_point(data = top, aes(x = plot.x, y = plot.y),
-               colour = get_palette(1, palette.name), size = point.size + 1) +
+               colour = top.col, size = point.size + 1) +
     labs(x = x.lab, y = y.lab, title = plot.title) +
     theme_bw(base_size = 12)
 
-  if (requireNamespace("ggrepel", quietly = TRUE)) {
-    p <- p + ggrepel::geom_text_repel(
-      data = top, aes(x = plot.x, y = plot.y, label = gene),
-      size = label.size, colour = get_palette(1, palette.name),
-      max.overlaps = Inf, min.segment.length = 0,
-      segment.size = 0.2, box.padding = 0.35)
-  } else {
-    p <- p + geom_text(data = top, aes(x = plot.x, y = plot.y, label = gene),
-                       size = label.size, vjust = -0.6, check_overlap = TRUE)
+  add_labels <- function(p, d, col, sz) {
+    if (requireNamespace("ggrepel", quietly = TRUE)) {
+      p + ggrepel::geom_text_repel(
+        data = d, aes(x = plot.x, y = plot.y, label = gene),
+        size = sz, colour = col,
+        max.overlaps = Inf, min.segment.length = 0,
+        segment.size = 0.2, box.padding = 0.35)
+    } else {
+      p + geom_text(data = d, aes(x = plot.x, y = plot.y, label = gene),
+                    size = sz, vjust = -0.6, colour = col, check_overlap = TRUE)
+    }
+  }
+  p <- add_labels(p, top, top.col, label.size)
+
+  if (!is.null(hl.df) && nrow(hl.df) > 0) {
+    p <- p +
+      geom_point(data = hl.df, aes(x = plot.x, y = plot.y),
+                 colour = highlight.colour, size = point.size + 1.2, shape = 17)
+    p <- add_labels(p, hl.df[!(hl.df$gene %in% top$gene), ], highlight.colour, label.size)
   }
 
   if (save.plot) {

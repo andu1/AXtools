@@ -13,7 +13,11 @@ plot_enrichment_scatter(
   value.column = "cell_num",
   sg.pattern = "_sg[0-9]+$",
   n.label = 20,
+  highlight.genes = NULL,
+  highlight.colour = "firebrick",
+  highlight.label = "cross-referenced",
   log.score = TRUE,
+  log.base = 10,
   min.unsorted = 1,
   label.size = 3,
   point.size = 0.8,
@@ -43,10 +47,22 @@ columns for sgRNA id, sample id, and a numeric value.}
 
 \item{sg.pattern}{Regex stripped from sgID to extract the gene name.}
 
-\item{n.label}{Number of top guides (by distance from origin) to label.}
+\item{n.label}{Number of top guides (by combined score) to label.}
 
-\item{log.score}{If \code{TRUE}, plot log10(enrichment score) instead of the raw
-ratio; guides with score <= 0 are dropped.}
+\item{highlight.genes}{Optional character vector of gene names to label in a
+distinct colour, regardless of their rank. Use to cross-reference top
+genes from another enrichment scatter.}
+
+\item{highlight.colour}{Colour for highlighted genes (default \code{"firebrick"}).}
+
+\item{highlight.label}{Legend label for highlighted genes.}
+
+\item{log.score}{If \code{TRUE}, apply a log transform to the enrichment scores
+before plotting and regression; guides with score <= 0 are dropped.
+If \code{FALSE}, plot raw ratios.}
+
+\item{log.base}{Base of the log transform when \code{log.score = TRUE} (default
+10). Common choices: 10, 2, or \code{exp(1)} for natural log.}
 
 \item{min.unsorted}{Minimum unsorted cell number to include a guide.}
 
