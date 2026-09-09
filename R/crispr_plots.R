@@ -1287,3 +1287,83 @@ plot_enrichment_scatter <- function(
 
   invisible(list(plot = p, scores = merged))
 }
+
+# ---- plot_gene_set_bars ------------------------------------------------------
+
+#' Horizontal bar chart of top gene sets
+#'
+#' Visualises gene-set membership results from an MSigDB lookup.
+#' Input is a data.frame with columns `gene_set`, `n_genes`, and `genes`
+#' (as returned by a `gene_set_lookup()` helper).  Bars are ordered by
+#' `n_genes` and annotated with the matching gene names.
+#'
+#' @param set_counts A data.frame with columns \code{gene_set} (character),
+#'   \code{n_genes} (integer), and \code{genes} (comma-separated character
+#'   string of matching gene symbols).
+#' @param n_top Maximum number of gene sets to show (default 15).
+#' @param min_genes Minimum number of matching genes for a set to be included
+#'   (default 2).
+#' @param title Plot title.
+#' @param bar.colour Fill colour for the bars.
+#' @param label.size Font size for gene-name annotations on bars.
+#' @param save.plot If \code{TRUE}, save to \code{output.file}.
+#' @param output.file File path for saved plot.
+#' @param plot.width,plot.height Dimensions in inches for saved plot.
+#' @return A ggplot object (invisibly).
+#' @export
+plot_gene_set_bars <- function(
+    set_counts,
+    n_top         = 15,
+    min_genes     = 2,
+    title         = "Top gene sets",
+    bar.colour    = "steelblue",
+    label.size    = 3,
+    save.plot     = FALSE,
+    output.file   = "gene_set_bars.pdf",
+    plot.width    = 10,
+    plot.height   = 6
+) {
+  if (is.null(set_counts) || nrow(set_counts) == 0) {
+    message("No gene set data to plot.")
+    return(invisible(NULL))
+  }
+
+  ## Filter and trim
+  df <- set_counts[set_counts$n_genes >= min_genes, , drop = FALSE]
+  if (nrow(df) == 0) {
+    message("No gene sets meet the min_genes threshold (", min_genes, ").")
+    return(invisible(NULL))
+  }
+  df <- head(df[order(-df$n_genes), ], n_top)
+
+  ## Wrap long set names for readability
+  df$gene_set_wrap <- sapply(df$gene_set, function(s) {
+    paste(strwrap(tolower(s), width = 40), collapse = "\n")
+  })
+
+  ## Order factor by n_genes (lowest at top so highest prints at top of horiz bar)
+  df$gene_set_wrap <- factor(df$gene_set_wrap,
+                             levels = rev(df$gene_set_wrap))
+
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = n_genes, y = gene_set_wrap)) +
+    ggplot2::geom_col(fill = bar.colour, width = 0.7) +
+    ggplot2::geom_text(ggplot2::aes(label = genes),
+                       hjust = -0.05, size = label.size, colour = "grey20") +
+    ggplot2::scale_x_continuous(
+      expand = ggplot2::expansion(mult = c(0, 0.55)),
+      breaks = function(lim) seq(0, floor(lim[2]), by = 1)
+    ) +
+    ggplot2::labs(x = "Matching genes", y = NULL, title = title) +
+    ggplot2::theme_bw(base_size = 12) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(face = "bold", size = 13),
+      axis.text.y = ggplot2::element_text(size = 9)
+    )
+
+  if (save.plot) {
+    ggplot2::ggsave(output.file, plot = p, width = plot.width, height = plot.height)
+    message("Saved plot to: ", output.file)
+  }
+
+  invisible(p)
+}
