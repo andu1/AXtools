@@ -16,6 +16,7 @@ plot_enrichment_scatter(
   highlight.genes = NULL,
   highlight.colour = "firebrick",
   highlight.label = "cross-referenced",
+  label.by = c("gene", "sgID"),
   log.score = TRUE,
   log.base = 10,
   min.unsorted = 1,
@@ -56,6 +57,10 @@ genes from another enrichment scatter.}
 \item{highlight.colour}{Colour for highlighted genes (default \code{"firebrick"}).}
 
 \item{highlight.label}{Legend label for highlighted genes.}
+
+\item{label.by}{What to use for point labels: \code{"gene"} (default) uses the
+bare gene name, \code{"sgID"} uses the full sgRNA identifier abbreviated from
+\code{GENE_sg5} to \code{GENE-5}.}
 
 \item{log.score}{If \code{TRUE}, apply a log transform to the enrichment scores
 before plotting and regression; guides with score <= 0 are dropped.
