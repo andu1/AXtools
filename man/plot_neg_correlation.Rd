@@ -12,6 +12,7 @@ plot_neg_correlation(
   sample.column = "Sample_ID",
   value.column = "cell_num",
   min.cells = 0,
+  min.y.cells = 0,
   include.zeros = FALSE,
   zero.floor.cells = 0.5,
   log.transform = TRUE,
@@ -45,6 +46,10 @@ columns for sgRNA id, sample id, and a numeric value.}
 
 \item{min.cells}{Minimum cell-number threshold applied to raw values in
 both axes.}
+
+\item{min.y.cells}{Minimum cell-number threshold applied to y-axis values
+only (before log transform). Points below this in any y-sample are dropped
+before regression. Use to exclude low-count observations from one axis.}
 
 \item{include.zeros}{If \code{TRUE}, guides present in \code{x.sample} but absent
 from a y-sample are kept with y set to \code{zero.floor.cells}.}

@@ -39,6 +39,9 @@ get_palette <- function(n.colours, palette.name) {
 #' @param value.column Column name for the numeric value to correlate.
 #' @param min.cells Minimum cell-number threshold applied to raw values in
 #'   both axes.
+#' @param min.y.cells Minimum cell-number threshold applied to y-axis values
+#'   only (before log transform). Points below this in any y-sample are dropped
+#'   before regression. Use to exclude low-count observations from one axis.
 #' @param include.zeros If `TRUE`, guides present in `x.sample` but absent
 #'   from a y-sample are kept with y set to `zero.floor.cells`.
 #' @param zero.floor.cells Plotted value for absent guides (used only when
@@ -64,6 +67,7 @@ plot_neg_correlation <- function(
     sample.column = "Sample_ID",
     value.column  = "cell_num",
     min.cells     = 0,
+    min.y.cells   = 0,
     include.zeros = FALSE,
     zero.floor.cells = 0.5,
     log.transform = TRUE,
@@ -133,6 +137,14 @@ plot_neg_correlation <- function(
     plot.df  <- plot.df[plot.df$x.value >= min.cells & plot.df$y.value >= min.cells, ]
     message(sprintf("min.cells = %g: kept %d of %d sgRNA-pairs (>= %g cells in both %s and the negative).",
                     min.cells, nrow(plot.df), n.before, min.cells, x.sample))
+  }
+
+  ## Y-axis-only cutoff (raw scale, before log)
+  if (min.y.cells > 0) {
+    n.before <- nrow(plot.df)
+    plot.df  <- plot.df[plot.df$y.value >= min.y.cells, ]
+    message(sprintf("min.y.cells = %g: kept %d of %d sgRNA-pairs (>= %g cells in y-sample).",
+                    min.y.cells, nrow(plot.df), n.before, min.y.cells))
   }
 
   ## Log10 transform
