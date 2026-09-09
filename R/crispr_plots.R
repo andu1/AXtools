@@ -1132,6 +1132,9 @@ plot_ratio_histogram_hits <- function(
 #'   If `FALSE`, plot raw ratios.
 #' @param log.base Base of the log transform when `log.score = TRUE` (default
 #'   10). Common choices: 10, 2, or `exp(1)` for natural log.
+#' @param label.by What to use for point labels: `"gene"` (default) uses the
+#'   bare gene name, `"sgID"` uses the full sgRNA identifier abbreviated from
+#'   `GENE_sg5` to `GENE-5`.
 #' @param min.unsorted Minimum unsorted cell number to include a guide.
 #' @param label.size Size of gene-name labels.
 #' @param point.size,point.alpha Aesthetic parameters.
@@ -1154,6 +1157,7 @@ plot_enrichment_scatter <- function(
     highlight.genes = NULL,
     highlight.colour = "firebrick",
     highlight.label  = "cross-referenced",
+    label.by       = c("gene", "sgID"),
     log.score      = TRUE,
     log.base       = 10,
     min.unsorted   = 1,
@@ -1206,8 +1210,14 @@ plot_enrichment_scatter <- function(
   names(merged)[names(merged) == score.cols[1]] <- "score.x"
   names(merged)[names(merged) == score.cols[2]] <- "score.y"
 
-  ## Gene names
+  ## Gene names and label column
   merged$gene <- sub(sg.pattern, "", merged$sgID)
+  label.by <- match.arg(label.by)
+  if (label.by == "sgID") {
+    merged$label <- sub("_sg([0-9]+)$", "-\\1", merged$sgID)
+  } else {
+    merged$label <- merged$gene
+  }
 
   ## Transform
   if (log.score) {
@@ -1262,12 +1272,12 @@ plot_enrichment_scatter <- function(
   add_labels <- function(p, d, col, sz) {
     if (requireNamespace("ggrepel", quietly = TRUE)) {
       p + ggrepel::geom_text_repel(
-        data = d, aes(x = plot.x, y = plot.y, label = gene),
+        data = d, aes(x = plot.x, y = plot.y, label = label),
         size = sz, colour = col,
         max.overlaps = Inf, min.segment.length = 0,
         segment.size = 0.2, box.padding = 0.35)
     } else {
-      p + geom_text(data = d, aes(x = plot.x, y = plot.y, label = gene),
+      p + geom_text(data = d, aes(x = plot.x, y = plot.y, label = label),
                     size = sz, vjust = -0.6, colour = col, check_overlap = TRUE)
     }
   }
