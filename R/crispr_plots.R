@@ -1122,8 +1122,11 @@ plot_ratio_histogram_hits <- function(
 #' @param unsorted.sample Name of the pre-sorted / unsorted denominator sample.
 #' @param sg.pattern Regex stripped from sgID to extract the gene name.
 #' @param n.label Number of top guides (by distance from origin) to label.
-#' @param log.score If `TRUE`, plot log10(enrichment score) instead of the raw
-#'   ratio; guides with score <= 0 are dropped.
+#' @param log.score If `TRUE`, apply a log transform to the enrichment scores
+#'   before plotting and regression; guides with score <= 0 are dropped.
+#'   If `FALSE`, plot raw ratios.
+#' @param log.base Base of the log transform when `log.score = TRUE` (default
+#'   10). Common choices: 10, 2, or `exp(1)` for natural log.
 #' @param min.unsorted Minimum unsorted cell number to include a guide.
 #' @param label.size Size of gene-name labels.
 #' @param point.size,point.alpha Aesthetic parameters.
@@ -1144,6 +1147,7 @@ plot_enrichment_scatter <- function(
     sg.pattern     = "_sg[0-9]+$",
     n.label        = 20,
     log.score      = TRUE,
+    log.base       = 10,
     min.unsorted   = 1,
     label.size     = 3,
     point.size     = 0.8,
@@ -1197,13 +1201,15 @@ plot_enrichment_scatter <- function(
   ## Gene names
   merged$gene <- sub(sg.pattern, "", merged$sgID)
 
-  ## Log transform
+  ## Transform
   if (log.score) {
     merged <- merged[merged$score.x > 0 & merged$score.y > 0, ]
-    merged$plot.x <- log10(merged$score.x)
-    merged$plot.y <- log10(merged$score.y)
-    x.lab <- sprintf("log10(%s / %s)", pos.samples[1], unsorted.sample)
-    y.lab <- sprintf("log10(%s / %s)", pos.samples[2], unsorted.sample)
+    log.fn <- function(x) log(x, base = log.base)
+    merged$plot.x <- log.fn(merged$score.x)
+    merged$plot.y <- log.fn(merged$score.y)
+    base.lab <- if (log.base == exp(1)) "ln" else sprintf("log%g", log.base)
+    x.lab <- sprintf("%s(%s / %s)", base.lab, pos.samples[1], unsorted.sample)
+    y.lab <- sprintf("%s(%s / %s)", base.lab, pos.samples[2], unsorted.sample)
   } else {
     merged$plot.x <- merged$score.x
     merged$plot.y <- merged$score.y
@@ -1219,7 +1225,7 @@ plot_enrichment_scatter <- function(
 
   ## Report
   message(sprintf("Enrichment score: %s cell_num / %s cell_num%s",
-                  "positive", unsorted.sample, if (log.score) " (log10)" else ""))
+                  "positive", unsorted.sample, if (log.score) sprintf(" (%s)", base.lab) else ""))
   message(sprintf("  %d sgRNAs with scores in both replicates", nrow(merged)))
   message(sprintf("  Top %d by distance from origin:", nrow(top)))
   print(top[, c("sgID", "gene", "score.x", "score.y", "dist")], row.names = FALSE)
