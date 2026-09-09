@@ -1377,3 +1377,142 @@ plot_gene_set_bars <- function(
 
   invisible(p)
 }
+
+# ---- plot_enrichment_barcode -------------------------------------------------
+
+#' Per-gene barcode plot of sgRNA enrichment scores
+#'
+#' Shows the top genes ranked by median enrichment score, with each sgRNA
+#' drawn as an individual bar so you can assess whether enrichment is
+#' consistent across multiple guides or driven by a single outlier.
+#' Enrichment is computed as sample cell number / unsorted cell number,
+#' averaged across the supplied replicates.
+#'
+#' @inheritParams plot_enrichment_scatter
+#' @param n_genes Number of top genes to display (default 20).
+#' @param bar.width Width of individual sgRNA bars (default 0.7).
+#' @param bar.colour Fill colour for the bars.
+#' @param median.colour Colour of the median indicator line per gene.
+#' @param title Plot title; auto-generated if `NULL`.
+#' @param save.plot If `TRUE`, save to `output.file`.
+#' @param output.file File path for saved plot.
+#' @param plot.width,plot.height Dimensions in inches for saved plot.
+#' @return A list with `plot` (ggplot object) and `gene_scores` (data.frame
+#'   of per-gene median scores, sorted descending).
+#' @export
+plot_enrichment_barcode <- function(
+    sample.info,
+    pos.samples     = c("pos-1", "pos-2"),
+    unsorted.sample = "unsorted-1",
+    id.column       = "sgID",
+    sample.column   = "Sample_ID",
+    value.column    = "cell_num",
+    sg.pattern      = "_sg[0-9]+$",
+    n_genes         = 20,
+    log.score       = TRUE,
+    log.base        = 10,
+    min.unsorted    = 1,
+    bar.width       = 0.7,
+    bar.colour      = "steelblue",
+    median.colour   = "firebrick",
+    title           = NULL,
+    save.plot       = FALSE,
+    output.file     = "enrichment_barcode.pdf",
+    plot.width      = 10,
+    plot.height     = 7
+) {
+  require(ggplot2)
+
+  ## Read data
+  if (is.character(sample.info)) {
+    df <- read.csv(sample.info, stringsAsFactors = FALSE, check.names = FALSE)
+  } else {
+    df <- as.data.frame(sample.info)
+  }
+
+  ## Unsorted denominator
+  uns <- df[df[[sample.column]] == unsorted.sample & df[[value.column]] >= min.unsorted,
+            c(id.column, value.column)]
+  names(uns) <- c("sgID", "unsorted")
+
+  ## Enrichment per replicate, then average across replicates per sgRNA
+  enrich_list <- lapply(pos.samples, function(ps) {
+    sub <- df[df[[sample.column]] == ps & df[[value.column]] > 0,
+              c(id.column, value.column)]
+    names(sub) <- c("sgID", "pos")
+    m <- merge(sub, uns, by = "sgID")
+    m$score <- m$pos / m$unsorted
+    m[, c("sgID", "score")]
+  })
+  # Merge all replicates
+  scores <- enrich_list[[1]]
+  names(scores)[2] <- "score.1"
+  for (i in seq_along(enrich_list)[-1]) {
+    el <- enrich_list[[i]]
+    names(el)[2] <- paste0("score.", i)
+    scores <- merge(scores, el, by = "sgID")
+  }
+  score.cols <- paste0("score.", seq_along(pos.samples))
+  scores$mean_score <- rowMeans(scores[, score.cols, drop = FALSE], na.rm = TRUE)
+
+  ## Gene and sgRNA label
+  scores$gene  <- sub(sg.pattern, "", scores$sgID)
+  scores$sg_id <- sub("_sg([0-9]+)$", "-\\1", scores$sgID)
+
+  ## Log transform
+  if (log.score) {
+    scores <- scores[scores$mean_score > 0, ]
+    scores$plot_score <- log(scores$mean_score, base = log.base)
+    base.lab <- if (log.base == exp(1)) "ln" else sprintf("log%g", log.base)
+    y.lab <- sprintf("%s(enrichment score)", base.lab)
+  } else {
+    scores$plot_score <- scores$mean_score
+    y.lab <- "Enrichment score"
+  }
+
+  ## Per-gene median
+  gene_med <- aggregate(plot_score ~ gene, data = scores, FUN = median)
+  names(gene_med)[2] <- "median_score"
+  gene_med <- gene_med[order(-gene_med$median_score), ]
+
+  ## Top N genes
+  top_genes <- head(gene_med$gene, n_genes)
+  plot_df <- scores[scores$gene %in% top_genes, ]
+  plot_df$gene <- factor(plot_df$gene, levels = rev(top_genes))
+  gene_med_top <- gene_med[gene_med$gene %in% top_genes, ]
+  gene_med_top$gene <- factor(gene_med_top$gene, levels = rev(top_genes))
+
+  ## Title
+  if (is.null(title))
+    title <- sprintf("Top %d genes by median enrichment (%s)",
+                     length(top_genes), paste(pos.samples, collapse = " + "))
+
+  ## Plot — horizontal bars per sgRNA, genes on y-axis
+  p <- ggplot(plot_df, aes(x = plot_score, y = gene)) +
+    geom_point(aes(colour = sg_id), size = 3, shape = 124, stroke = 3) +
+    geom_point(data = gene_med_top, aes(x = median_score, y = gene),
+               colour = median.colour, shape = 18, size = 3) +
+    geom_vline(xintercept = 0, linetype = "dotted", colour = "grey50") +
+    labs(x = y.lab, y = NULL, title = title, colour = "sgRNA") +
+    theme_bw(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", size = 13),
+      legend.position = "none"
+    )
+
+  ## Add sgRNA labels next to each tick mark
+  if (requireNamespace("ggrepel", quietly = TRUE)) {
+    p <- p + ggrepel::geom_text_repel(
+      aes(label = sg_id), size = 2.5, colour = "grey30",
+      direction = "x", nudge_x = 0.05,
+      max.overlaps = Inf, segment.size = 0.15, box.padding = 0.15
+    )
+  }
+
+  if (save.plot) {
+    ggsave(output.file, plot = p, width = plot.width, height = plot.height)
+    message("Saved plot to: ", output.file)
+  }
+
+  invisible(list(plot = p, gene_scores = gene_med))
+}
